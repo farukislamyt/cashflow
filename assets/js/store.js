@@ -1,229 +1,389 @@
 /**
- * CashFlow — Data Store (store.js)
- * Central state management with localStorage persistence
+ * CashFlow — Store
+ * Secure, versioned localStorage data layer.
+ * No seed data. All state persisted safely.
  */
 
 const Store = (() => {
+  'use strict';
+
+  const VERSION  = 'cf_v1';
   const KEYS = {
-    transactions: 'cf_transactions_v2',
-    budgets:      'cf_budgets_v2',
-    settings:     'cf_settings_v2',
+    transactions: `${VERSION}_transactions`,
+    budgets:      `${VERSION}_budgets`,
+    settings:     `${VERSION}_settings`,
   };
 
-  /* ── Default settings ── */
-  const DEFAULT_SETTINGS = {
-    currency:      '৳',
-    currencyCode:  'BDT',
-    userName:      'Faruk Islam',
-    dateFormat:    'dd MMM yyyy',
-  };
-
-  /* ── Read / Write ── */
-  function read(key, fallback = null) {
+  // ── Secure read/write with error boundaries ──
+  function _read(key, fallback) {
     try {
       const raw = localStorage.getItem(key);
-      return raw !== null ? JSON.parse(raw) : fallback;
-    } catch { return fallback; }
+      if (raw === null) return fallback;
+      return JSON.parse(raw);
+    } catch (e) {
+      console.warn('[Store] read error', key, e);
+      return fallback;
+    }
   }
 
-  function write(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
-    catch { return false; }
-  }
-
-  /* ── Transactions ── */
-  let _transactions = read(KEYS.transactions, null);
-
-  if (_transactions === null) {
-    _transactions = generateSeedData();
-    write(KEYS.transactions, _transactions);
-  }
-
-  function generateSeedData() {
-    const now = new Date();
-    const y   = now.getFullYear();
-    const m   = String(now.getMonth() + 1).padStart(2, '0');
-    const pm  = String(now.getMonth()).padStart(2, '0') || '12';
-    const py  = now.getMonth() === 0 ? y - 1 : y;
-    const d   = (n) => `${y}-${m}-${String(n).padStart(2,'0')}`;
-    const dp  = (n) => `${py}-${pm}-${String(n).padStart(2,'0')}`;
-
-    return [
-      { id: uid(), type:'income',  desc:'Monthly Salary',       amount:55000, category:'salary',        date:d(1),  note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'House Rent',            amount:14000, category:'rent',           date:d(2),  note:'Dhanmondi flat', tags:[] },
-      { id: uid(), type:'expense', desc:'Grocery Shopping',      amount:3800,  category:'food',           date:d(4),  note:'Shajahan Market',tags:[] },
-      { id: uid(), type:'income',  desc:'Freelance Web Project',  amount:18000, category:'freelance',      date:d(5),  note:'React dashboard',tags:[] },
-      { id: uid(), type:'expense', desc:'Electricity & Gas Bill', amount:1650,  category:'utilities',      date:d(6),  note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Uber & Pathao',          amount:1200,  category:'transport',      date:d(8),  note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Daraz Shopping',         amount:3200,  category:'shopping',       date:d(10), note:'Phone case+cable',tags:[] },
-      { id: uid(), type:'expense', desc:'Doctor Consultation',    amount:1500,  category:'health',         date:d(12), note:'Ibn Sina Hospital',tags:[] },
-      { id: uid(), type:'expense', desc:'Restaurant — Family',    amount:2200,  category:'food',           date:d(13), note:'Kacchi Bhai',    tags:[] },
-      { id: uid(), type:'income',  desc:'Performance Bonus',      amount:10000, category:'salary',         date:d(14), note:'Q4 bonus',       tags:[] },
-      { id: uid(), type:'expense', desc:'Netflix + Spotify',      amount:650,   category:'entertainment',  date:d(15), note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Internet Bill',          amount:700,   category:'utilities',      date:d(16), note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Gym Membership',         amount:1800,  category:'health',         date:d(17), note:'',              tags:[] },
-      { id: uid(), type:'income',  desc:'YouTube AdSense',        amount:6500,  category:'freelance',      date:d(19), note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Course — Udemy',         amount:890,   category:'education',      date:d(21), note:'React Advanced', tags:[] },
-      // Previous month data
-      { id: uid(), type:'income',  desc:'Monthly Salary',         amount:55000, category:'salary',         date:dp(1), note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'House Rent',             amount:14000, category:'rent',           date:dp(2), note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Groceries',              amount:4100,  category:'food',           date:dp(5), note:'',              tags:[] },
-      { id: uid(), type:'income',  desc:'Freelance Project',       amount:12000, category:'freelance',      date:dp(8), note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Shopping',               amount:2800,  category:'shopping',       date:dp(10),note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Utilities',              amount:2100,  category:'utilities',      date:dp(12),note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Transport',              amount:1400,  category:'transport',      date:dp(15),note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Health',                 amount:2500,  category:'health',         date:dp(18),note:'',              tags:[] },
-      { id: uid(), type:'expense', desc:'Entertainment',          amount:800,   category:'entertainment',  date:dp(22),note:'',              tags:[] },
-    ];
-  }
-
-  /* ── Budgets ── */
-  let _budgets = read(KEYS.budgets, {
-    food: 6000, rent: 15000, transport: 2000,
-    shopping: 4000, utilities: 2500, health: 3000,
-    entertainment: 1500, education: 2000,
-  });
-
-  /* ── Settings ── */
-  let _settings = { ...DEFAULT_SETTINGS, ...read(KEYS.settings, {}) };
-
-  /* ── Helpers ── */
-  function uid() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  }
-
-  function saveTransactions()  { write(KEYS.transactions, _transactions); }
-  function saveBudgets()       { write(KEYS.budgets, _budgets); }
-  function saveSettings()      { write(KEYS.settings, _settings); }
-
-  function isThisMonth(tx) {
-    const now = new Date();
-    const d   = new Date(tx.date + 'T00:00:00');
-    return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-  }
-
-  /* ── Public API ── */
-  return {
-    // Transactions
-    getAll()  { return [..._transactions]; },
-    getById(id) { return _transactions.find(t => t.id === id) || null; },
-
-    add(tx) {
-      const newTx = { id: uid(), tags: [], note: '', ...tx };
-      _transactions.unshift(newTx);
-      saveTransactions();
-      return newTx;
-    },
-
-    update(id, data) {
-      const idx = _transactions.findIndex(t => t.id === id);
-      if (idx === -1) return false;
-      _transactions[idx] = { ..._transactions[idx], ...data };
-      saveTransactions();
+  function _write(key, value) {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
       return true;
-    },
-
-    delete(id) {
-      const len = _transactions.length;
-      _transactions = _transactions.filter(t => t.id !== id);
-      if (_transactions.length < len) { saveTransactions(); return true; }
+    } catch (e) {
+      // Handle quota exceeded
+      if (e.name === 'QuotaExceededError') {
+        console.error('[Store] Storage quota exceeded. Cannot save data.');
+        _dispatchEvent('storage:quota_exceeded');
+      } else {
+        console.error('[Store] write error', key, e);
+      }
       return false;
+    }
+  }
+
+  function _dispatchEvent(name, detail = {}) {
+    window.dispatchEvent(new CustomEvent(name, { detail }));
+  }
+
+  // ── UID generator ──
+  function uid() {
+    return [
+      Date.now().toString(36),
+      Math.random().toString(36).slice(2, 6),
+      Math.random().toString(36).slice(2, 6),
+    ].join('_');
+  }
+
+  // ── Default values ──
+  const DEFAULTS = {
+    settings: {
+      userName:    'My Account',
+      currency:    '৳',
+      dateLocale:  'en-BD',
+      notifications: true,
+      compactView: false,
     },
-
-    deleteAll() { _transactions = []; saveTransactions(); },
-
-    // Computed
-    getMonthly(year, month) {
-      return _transactions.filter(t => {
-        const d = new Date(t.date + 'T00:00:00');
-        return d.getFullYear() === year && d.getMonth() === month;
-      });
-    },
-
-    getThisMonth() {
-      const now = new Date();
-      return this.getMonthly(now.getFullYear(), now.getMonth());
-    },
-
-    sumByType(list, type) {
-      return list.filter(t => t.type === type).reduce((s,t) => s + Number(t.amount), 0);
-    },
-
-    spendByCategory(list) {
-      const map = {};
-      list.filter(t => t.type === 'expense').forEach(t => {
-        map[t.category] = (map[t.category] || 0) + Number(t.amount);
-      });
-      return map;
-    },
-
-    last7DaysStats() {
-      const days = [];
-      for (let i = 6; i >= 0; i--) {
-        const d  = new Date();
-        d.setDate(d.getDate() - i);
-        const ds = d.toISOString().split('T')[0];
-        const txs = _transactions.filter(t => t.date === ds);
-        days.push({
-          date:  ds,
-          label: d.toLocaleDateString('en', { weekday: 'short' }),
-          inc:   txs.filter(t => t.type === 'income').reduce((s,t) => s + +t.amount, 0),
-          exp:   txs.filter(t => t.type === 'expense').reduce((s,t) => s + +t.amount, 0),
-        });
-      }
-      return days;
-    },
-
-    last6MonthsStats() {
-      const months = [];
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(1);
-        d.setMonth(d.getMonth() - i);
-        const list = this.getMonthly(d.getFullYear(), d.getMonth());
-        months.push({
-          label: d.toLocaleString('default', { month: 'short' }),
-          year:  d.getFullYear(),
-          month: d.getMonth(),
-          inc:   this.sumByType(list, 'income'),
-          exp:   this.sumByType(list, 'expense'),
-        });
-      }
-      return months;
-    },
-
-    totalBalance() {
-      const all = _transactions;
-      return this.sumByType(all, 'income') - this.sumByType(all, 'expense');
-    },
-
-    // Budgets
-    getBudgets()       { return { ..._budgets }; },
-    setBudget(cat, limit) { _budgets[cat] = Number(limit); saveBudgets(); },
-    deleteBudget(cat)     { delete _budgets[cat]; saveBudgets(); },
-
-    // Settings
-    getSettings()      { return { ..._settings }; },
-    updateSettings(s)  { _settings = { ..._settings, ...s }; saveSettings(); },
-
-    // Format helpers
-    fmt(n) {
-      const s = _settings;
-      return s.currency + Number(n).toLocaleString('en', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      });
-    },
-
-    fmtDate(dateStr) {
-      const d = new Date(dateStr + 'T00:00:00');
-      return d.toLocaleDateString('en-BD', { day: '2-digit', month: 'short', year: 'numeric' });
-    },
-
-    uid,
-    isThisMonth,
+    budgets: {},
+    transactions: [],
   };
+
+  // ── Load state ──
+  let _txs      = _read(KEYS.transactions, DEFAULTS.transactions);
+  let _budgets  = _read(KEYS.budgets,      DEFAULTS.budgets);
+  let _settings = { ...DEFAULTS.settings, ..._read(KEYS.settings, {}) };
+
+  // Validate loaded data
+  if (!Array.isArray(_txs))   _txs = [];
+  if (typeof _budgets !== 'object' || Array.isArray(_budgets)) _budgets = {};
+
+  // ── Persist helpers ──
+  function _saveTx()  {
+    const ok = _write(KEYS.transactions, _txs);
+    if (ok) _dispatchEvent('cf:data_changed', { type: 'transactions' });
+    return ok;
+  }
+  function _saveBudgets() {
+    const ok = _write(KEYS.budgets, _budgets);
+    if (ok) _dispatchEvent('cf:data_changed', { type: 'budgets' });
+    return ok;
+  }
+  function _saveSettings() {
+    return _write(KEYS.settings, _settings);
+  }
+
+  // ══════════════════════════════════════════
+  // TRANSACTIONS API
+  // ══════════════════════════════════════════
+
+  function getAll() {
+    return [..._txs];
+  }
+
+  function getById(id) {
+    return _txs.find(t => t.id === id) || null;
+  }
+
+  function add(data) {
+    const tx = {
+      id:       uid(),
+      type:     data.type,
+      desc:     String(data.desc || '').trim().slice(0, 100),
+      amount:   Math.abs(parseFloat(data.amount) || 0),
+      category: data.category || 'other',
+      date:     data.date || _todayISO(),
+      note:     String(data.note || '').trim().slice(0, 200),
+      createdAt: Date.now(),
+    };
+    _txs.unshift(tx);
+    _saveTx();
+    return tx;
+  }
+
+  function update(id, data) {
+    const idx = _txs.findIndex(t => t.id === id);
+    if (idx === -1) return false;
+    _txs[idx] = {
+      ..._txs[idx],
+      type:     data.type     || _txs[idx].type,
+      desc:     data.desc     !== undefined ? String(data.desc).trim().slice(0, 100)  : _txs[idx].desc,
+      amount:   data.amount   !== undefined ? Math.abs(parseFloat(data.amount) || 0)  : _txs[idx].amount,
+      category: data.category || _txs[idx].category,
+      date:     data.date     || _txs[idx].date,
+      note:     data.note     !== undefined ? String(data.note).trim().slice(0, 200)  : _txs[idx].note,
+      updatedAt: Date.now(),
+    };
+    _saveTx();
+    return true;
+  }
+
+  function remove(id) {
+    const before = _txs.length;
+    _txs = _txs.filter(t => t.id !== id);
+    if (_txs.length < before) { _saveTx(); return true; }
+    return false;
+  }
+
+  function clearAll() {
+    _txs = [];
+    _saveTx();
+  }
+
+  // ── Computed ──
+  function getByMonth(year, month) {
+    return _txs.filter(t => {
+      const d = _parseDate(t.date);
+      return d && d.getFullYear() === year && d.getMonth() === month;
+    });
+  }
+
+  function getThisMonth() {
+    const n = new Date();
+    return getByMonth(n.getFullYear(), n.getMonth());
+  }
+
+  function sumType(list, type) {
+    return list
+      .filter(t => t.type === type)
+      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  }
+
+  function totalBalance() {
+    return sumType(_txs, 'income') - sumType(_txs, 'expense');
+  }
+
+  function spendByCategory(list) {
+    const map = {};
+    list.filter(t => t.type === 'expense').forEach(t => {
+      map[t.category] = (map[t.category] || 0) + (Number(t.amount) || 0);
+    });
+    return map;
+  }
+
+  function incomeByCategory(list) {
+    const map = {};
+    list.filter(t => t.type === 'income').forEach(t => {
+      map[t.category] = (map[t.category] || 0) + (Number(t.amount) || 0);
+    });
+    return map;
+  }
+
+  function last7Days() {
+    const rows = [];
+    for (let i = 6; i >= 0; i--) {
+      const d  = new Date();
+      d.setDate(d.getDate() - i);
+      const ds = _isoDate(d);
+      const txs = _txs.filter(t => t.date === ds);
+      rows.push({
+        date:  ds,
+        label: d.toLocaleDateString('en', { weekday: 'short' }),
+        inc:   sumType(txs, 'income'),
+        exp:   sumType(txs, 'expense'),
+      });
+    }
+    return rows;
+  }
+
+  function last6Months() {
+    const rows = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const list = getByMonth(d.getFullYear(), d.getMonth());
+      rows.push({
+        label: d.toLocaleString('default', { month: 'short' }),
+        year:  d.getFullYear(),
+        month: d.getMonth(),
+        inc:   sumType(list, 'income'),
+        exp:   sumType(list, 'expense'),
+      });
+    }
+    return rows;
+  }
+
+  function averageDailyExpense() {
+    const monthly = getThisMonth();
+    const exp = sumType(monthly, 'expense');
+    return exp / new Date().getDate();
+  }
+
+  // ══════════════════════════════════════════
+  // BUDGETS API
+  // ══════════════════════════════════════════
+
+  function getBudgets() { return { ..._budgets }; }
+
+  function setBudget(cat, limit) {
+    _budgets[cat] = Math.abs(parseFloat(limit) || 0);
+    _saveBudgets();
+  }
+
+  function deleteBudget(cat) {
+    delete _budgets[cat];
+    _saveBudgets();
+  }
+
+  // ══════════════════════════════════════════
+  // SETTINGS API
+  // ══════════════════════════════════════════
+
+  function getSettings()      { return { ..._settings }; }
+  function getSetting(key)    { return _settings[key]; }
+  function updateSettings(s)  {
+    _settings = { ..._settings, ...s };
+    _saveSettings();
+    _dispatchEvent('cf:settings_changed');
+  }
+
+  // ══════════════════════════════════════════
+  // FORMAT HELPERS
+  // ══════════════════════════════════════════
+
+  function fmt(n) {
+    const num = Number(n) || 0;
+    return _settings.currency + num.toLocaleString('en', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function fmtDate(dateStr) {
+    const d = _parseDate(dateStr);
+    if (!d) return dateStr;
+    return d.toLocaleDateString('en-BD', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    });
+  }
+
+  function fmtDateShort(dateStr) {
+    const d = _parseDate(dateStr);
+    if (!d) return dateStr;
+    return d.toLocaleDateString('en-BD', { day: '2-digit', month: 'short' });
+  }
+
+  // ══════════════════════════════════════════
+  // EXPORT / IMPORT
+  // ══════════════════════════════════════════
+
+  function exportJSON() {
+    return JSON.stringify({
+      version:      VERSION,
+      exported_at:  new Date().toISOString(),
+      transactions: _txs,
+      budgets:      _budgets,
+      settings:     _settings,
+    }, null, 2);
+  }
+
+  function exportCSV() {
+    const header = 'Date,Type,Description,Category,Amount,Note';
+    const rows   = [..._txs]
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .map(t =>
+        [
+          t.date,
+          t.type,
+          `"${(t.desc || '').replace(/"/g, '""')}"`,
+          t.category,
+          t.amount,
+          `"${(t.note || '').replace(/"/g, '""')}"`,
+        ].join(',')
+      );
+    return [header, ...rows].join('\n');
+  }
+
+  function importJSON(jsonStr) {
+    try {
+      const data = JSON.parse(jsonStr);
+      if (Array.isArray(data.transactions)) {
+        _txs = data.transactions;
+        _saveTx();
+      }
+      if (data.budgets && typeof data.budgets === 'object') {
+        _budgets = data.budgets;
+        _saveBudgets();
+      }
+      return true;
+    } catch (e) {
+      console.error('[Store] import failed', e);
+      return false;
+    }
+  }
+
+  // ── Storage usage ──
+  function storageInfo() {
+    try {
+      const txSize  = (localStorage.getItem(KEYS.transactions) || '').length;
+      const bSize   = (localStorage.getItem(KEYS.budgets) || '').length;
+      const sSize   = (localStorage.getItem(KEYS.settings) || '').length;
+      const total   = txSize + bSize + sSize;
+      return {
+        transactions: _bytesToKB(txSize),
+        budgets:      _bytesToKB(bSize),
+        settings:     _bytesToKB(sSize),
+        total:        _bytesToKB(total),
+        totalBytes:   total,
+      };
+    } catch { return null; }
+  }
+
+  // ── Private helpers ──
+  function _parseDate(str) {
+    if (!str) return null;
+    const d = new Date(str + 'T00:00:00');
+    return isNaN(d) ? null : d;
+  }
+  function _isoDate(d) {
+    return d.toISOString().split('T')[0];
+  }
+  function _todayISO() {
+    return _isoDate(new Date());
+  }
+  function _bytesToKB(bytes) {
+    return (bytes / 1024).toFixed(2) + ' KB';
+  }
+
+  // ── Public API ──
+  return Object.freeze({
+    // Transactions
+    getAll, getById, add, update, remove, clearAll,
+    getByMonth, getThisMonth,
+    sumType, totalBalance, spendByCategory, incomeByCategory,
+    last7Days, last6Months, averageDailyExpense,
+    // Budgets
+    getBudgets, setBudget, deleteBudget,
+    // Settings
+    getSettings, getSetting, updateSettings,
+    // Format
+    fmt, fmtDate, fmtDateShort,
+    // Export/Import
+    exportJSON, exportCSV, importJSON,
+    storageInfo,
+    uid,
+    todayISO: () => _isoDate(new Date()),
+  });
 })();
 
-// Expose globally
 window.Store = Store;
